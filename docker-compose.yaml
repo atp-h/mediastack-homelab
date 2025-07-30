@@ -1,0 +1,180 @@
+services:
+  vpn:
+    profiles: ["vpn"]
+    container_name: vpn
+    image: qmcgaw/gluetun:v3.40.0
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - VPN_SERVICE_PROVIDER=${VPN_SERVICE_PROVIDER:-provider} 
+      - OPENVPN_USER=${OPENVPN_USER:-"passh"}
+      - OPENVPN_PASSWORD=${OPENVPN_PASSWORD:-"pass"}
+      - SERVER_COUNTRIES=${SERVER_COUNTRIES:-Netherlands}
+    networks:
+      - mynetwork
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    ports:
+     - 5080:5080
+     - 6881:6881
+     - 6881:6881/udp
+     - 9696:9696
+    restart: "unless-stopped"
+
+  qbittorrent:
+    profiles: ["vpn", "no-vpn"]
+    container_name: qbittorrent
+    image: lscr.io/linuxserver/qbittorrent:latest
+    depends_on:               
+      vpn:                   
+       condition: service_healthy 
+    network_mode: service:vpn
+
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+      - WEBUI_PORT=5080
+    volumes:
+      - qbittorrent-config:/config
+      - torrent-downloads:/downloads
+    restart: "unless-stopped"
+
+  radarr:
+    profiles: ["vpn", "no-vpn"]
+    container_name: radarr
+    image: lscr.io/linuxserver/radarr:5.18.4
+    networks:
+     mynetwork:
+      ipv4_address: 172.20.0.10
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+    ports:
+      - 7878:7878
+    volumes:
+      - radarr-config:/config
+      - torrent-downloads:/downloads
+    restart: "unless-stopped"
+
+  sonarr:
+    profiles: ["vpn", "no-vpn"]
+    image: linuxserver/sonarr:latest
+    container_name: sonarr
+    networks:
+     mynetwork:
+      ipv4_address: 172.20.0.11
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+    volumes:
+      - sonarr-config:/config
+      - torrent-downloads:/downloads
+    ports:
+      - 8989:8989
+    restart: unless-stopped
+
+  prowlarr:
+    profiles: ["vpn", "no-vpn"]
+    container_name: prowlarr
+    image: linuxserver/prowlarr:latest
+
+    depends_on:               
+      vpn:                   
+       condition: service_healthy 
+    network_mode: service:vpn 
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+    volumes:
+      - prowlarr-config:/config
+    restart: unless-stopped
+
+  jellyseerr:
+    profiles: ["vpn", "no-vpn"]
+    image: fallenbagel/jellyseerr:latest
+    container_name: jellyseerr
+    networks:
+      - mynetwork
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+    volumes:
+      - jellyseerr-config:/app/config
+    ports:
+      - 5055:5055
+    restart: unless-stopped
+
+  jellyfin:
+    profiles: ["vpn", "no-vpn"]
+    image: linuxserver/jellyfin:latest
+    container_name: jellyfin
+    networks:
+      - mynetwork
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+    volumes:
+      - jellyfin-config:/config
+      - torrent-downloads:/data
+
+    ports:
+      - 8096:8096
+      - 7359:7359/udp
+      - 8920:8920
+    restart: unless-stopped
+
+  recommendarr:
+    profiles: ["recommendarr"]
+    container_name: recommendarr
+    image: tannermiddleton/recommendarr:v1.2.70
+    networks:
+      - mynetwork
+    environment:
+      - NODE_ENV=production
+      - DOCKER_ENV=true
+      - PORT=3000
+      - PUBLIC_URL=https://localhost:3000 
+    volumes:
+      - recommendarr-data:/app/server/data
+    ports:
+      - 3000:3000
+    restart: unless-stopped
+
+  flaresolverr:
+    profiles: ["vpn", "no-vpn"]
+    # DockerHub mirror flaresolverr/flaresolverr:latest
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - LOG_HTML=${LOG_HTML:-false}
+      - CAPTCHA_SOLVER=${CAPTCHA_SOLVER:-none}
+      - TZ=Europe/LONDON
+    networks:
+     mynetwork:
+      ipv4_address: 172.20.0.12
+    ports:
+      - "${PORT:-8191}:8191"
+    volumes:
+      - flaresolverr-config:/config
+    restart: unless-stopped
+
+volumes:
+  torrent-downloads:
+  radarr-config:
+  sonarr-config:
+  prowlarr-config:
+  jellyfin-config:
+  qbittorrent-config:
+  jellyseerr-config:
+  recommendarr-data:
+  flaresolverr-config:
+
+networks:
+  mynetwork:
+    external: true
